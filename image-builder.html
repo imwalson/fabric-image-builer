@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Image builder</title>
+  <meta name="viewport" content="maximum-scale=1.0,minimum-scale=1.0,user-scalable=0,width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="./css/element-ui.css">
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/vcolorpicker.css">
+  <script src="//cdn.bootcdn.net/ajax/libs/lodash.js/4.17.19/lodash.min.js"></script>
+  <script src="./js/vue.min.js"></script>
+  <script src="./js//element-ui.js"></script>
+  <script src="./js/fabric-4.0.0-beta.7.js"></script>
+  <script src="./js/vcolorpicker.umd.js"></script>
+  <style>
+    
+  </style>
+</head>
+
+<body>
+  <div id="app" class="fabric-canvas">
+    <div class="canvas-area" :style="{ width: width + 'px', height: height + 'px' }">
+      <canvas id="c" :width="width" :height="height"></canvas>
+    </div>
+    <div class="form-content">
+      <el-form label-width="120px">
+        <el-form-item label="画布尺寸">
+          <el-select v-model="sizeValue" placeholder="请选择">
+            <el-option
+              v-for="item in sizeOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value">
+            </el-option>
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="设置背景图">
+          <!-- <el-input v-model="bgImgUrl"></el-input>
+          <div class="upload-line">
+            <el-button>change bg</el-button>
+          </div> -->
+          <div class="upload-line">
+            <input class="visually-hidden" type="file" id="upBgfile" accept=".png,.jpeg,.jpg" name="upfile" @change="bgImageChange" >
+            <label class="el-button el-button--default el-button--mini" for="upBgfile">Select image</label>
+          </div>
+          <div class="upload-line">
+            <el-button type="default" size="mini" @click="removeBg">Remove bg</el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="添加素材图片">
+          <div class="upload-line">
+            <input class="visually-hidden" type="file" id="upfile" accept=".png,.jpeg,.jpg" name="upfile" @change="iconImageChange" >
+            <label class="el-button el-button--default el-button--mini" for="upfile">Select image</label>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="作图工具">
+          <div class="upload-line">
+            <el-radio-group v-model="drawType" size="small">
+              <el-radio label="none">无</el-radio>
+              <el-radio label="pen">画笔</el-radio>
+              <el-radio label="arrow" >箭头</el-radio>
+              <el-radio label="line">直线</el-radio>
+              <el-radio label="dottedline">虚线</el-radio>
+              <el-radio label="circle">正圆</el-radio>
+              <el-radio label="ellipse">椭圆</el-radio>
+              <el-radio label="rectangle">长方形</el-radio>
+              <el-radio label="rightangle">直角三角形</el-radio>
+              <el-radio label="equilateral">等边三角形</el-radio>
+            </el-radio-group>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="工具颜色">
+          <div class="upload-line">
+            <color-picker v-model="color" />
+          </div>
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" @click="exportScreenshot">导出图片</el-button>
+          <a id="link"></a>
+        </el-form-item>
+      </el-form>
+    </div>
+  </div>
+  <script>
+    //坐标转换
+    window.zoom = window.zoom ? window.zoom : 1;
+    function transformMouse(mouseX, mouseY) {
+      return { x: mouseX / window.zoom, y: mouseY / window.zoom };
+    }
+    //绘制箭头方法
+    function drawArrow(fromX, fromY, toX, toY, theta, headlen) {
+      theta = typeof theta != "undefined" ? theta : 30;
+      headlen = typeof theta != "undefined" ? headlen : 10;
+      // 计算各角度和对应的P2,P3坐标
+      var angle = Math.atan2(fromY - toY, fromX - toX) * 180 / Math.PI,
+        angle1 = (angle + theta) * Math.PI / 180,
+        angle2 = (angle - theta) * Math.PI / 180,
+        topX = headlen * Math.cos(angle1),
+        topY = headlen * Math.sin(angle1),
+        botX = headlen * Math.cos(angle2),
+        botY = headlen * Math.sin(angle2);
+      var arrowX = fromX - topX,
+        arrowY = fromY - topY;
+      var path = " M " + fromX + " " + fromY;
+      path += " L " + toX + " " + toY;
+      arrowX = toX + topX;
+      arrowY = toY + topY;
+      path += " M " + arrowX + " " + arrowY;
+      path += " L " + toX + " " + toY;
+      arrowX = toX + botX;
+      arrowY = toY + botY;
+      path += " L " + arrowX + " " + arrowY;
+      return path;
+    }
+
+    var Main = {
+      data: function () {
+        return {
+          __canvas: null,
+          width: 360,
+          height: 640,
+          bgImgWidth: 768,
+          bgImgHeight: 1024,
+          bgImgUrl: '/images/creative-demo-768x1024.jpg',
+          creativeImg: '/images/315x472_demo.png',
+          mouseFrom: {
+            x: 0,
+            y: 0,
+          },
+          mouseTo: {
+            x: 0,
+            y: 0,
+          },
+          drawType: 'none',
+          doDrawing: false,
+          drawWidth: 2,
+          color: '#E34F51',
+          drawingObject: null,
+          moveCount: 1,
+          sizeValue: '360_640',
+          sizeOptions: [{
+            value: '360_640',
+            label: '360x640'
+          }, {
+            value: '600_600',
+            label: '600x600'
+          }, {
+            value: '600_300',
+            label: '600x300'
+          }, {
+            value: '300_600',
+            label: '300x600'
+          }, {
+            value: '600_400',
+            label: '600x400'
+          }, {
+            value: '400_600',
+            label: '400x600'
+          }]
+        };
+      },
+      watch: {
+        sizeValue: function(val) {
+          if (val) {
+            var arr = val.split('_');
+            var newWidth = parseInt(arr[0]);
+            var newHeight = parseInt(arr[1]);
+            this.changeCanvasSize(newWidth, newHeight);
+            // this.renderBackground();
+          }
+        },
+        drawType: function(val) {
+          if (val === 'none') {
+            this.discardCanvasActives();
+            this.__canvas.isDrawingMode = false;
+          } else if (val === 'pen') {
+            this.__canvas.isDrawingMode = true;
+            this.__canvas.freeDrawingBrush.color = this.color; //设置自由绘颜色
+          } else {
+            this.__canvas.isDrawingMode = false;
+          }
+        },
+      },
+      mounted: function () {
+        this.initCanvas();
+      },
+      methods: {
+        initCanvas() {
+          var _this = this;
+          var canvas = this.__canvas = new fabric.Canvas("c");
+          this.renderBackground();
+          // set background color
+          // this.addMockRectToCanvas();
+          // create a rect object
+          var deleteIcon = "data:image/svg+xml,%3C%3Fxml version='1.0' encoding='utf-8'%3F%3E%3C!DOCTYPE svg PUBLIC '-//W3C//DTD SVG 1.1//EN' 'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'%3E%3Csvg version='1.1' id='Ebene_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' width='595.275px' height='595.275px' viewBox='200 215 230 470' xml:space='preserve'%3E%3Ccircle style='fill:%23F44336;' cx='299.76' cy='439.067' r='218.516'/%3E%3Cg%3E%3Crect x='267.162' y='307.978' transform='matrix(0.7071 -0.7071 0.7071 0.7071 -222.6202 340.6915)' style='fill:white;' width='65.545' height='262.18'/%3E%3Crect x='266.988' y='308.153' transform='matrix(0.7071 0.7071 -0.7071 0.7071 398.3889 -83.3116)' style='fill:white;' width='65.544' height='262.179'/%3E%3C/g%3E%3C/svg%3E";
+
+          var img = document.createElement('img');
+          img.src = deleteIcon;
+
+          function deleteObject(eventData, target) {
+            var canvas = target.canvas;
+            canvas.remove(target);
+            canvas.requestRenderAll();
+          }
+
+          function renderIcon(ctx, left, top, styleOverride, fabricObject) {
+            if (!this.getVisibility(fabricObject)) {
+              return;
+            }
+            var size = this.cornerSize;
+            ctx.save();
+            ctx.translate(left, top);
+            ctx.rotate(fabric.util.degreesToRadians(fabricObject.angle));
+            ctx.drawImage(img, -size/2, -size/2, size, size);
+            ctx.restore();
+          }
+
+          canvas.freeDrawingBrush.color = this.color; //设置自由绘颜色
+          canvas.freeDrawingBrush.width = this.drawWidth;
+
+          //绑定画板事件
+          canvas.on("mouse:down", function (options) {
+            var activeObject = canvas.getActiveObject();
+            if (activeObject) {
+              console.log('has activeObject');
+            } else {
+              // console.log("canvas mouse:down");
+              var xy = transformMouse(options.e.offsetX, options.e.offsetY);
+              _this.mouseFrom.x = xy.x;
+              _this.mouseFrom.y = xy.y;
+              _this.doDrawing = true;
+            }
+          });
+          canvas.on("mouse:up", function (options) {
+            // console.log("canvas mouse:up");
+            var xy = transformMouse(options.e.offsetX, options.e.offsetY);
+            _this.mouseTo.x = xy.x;
+            _this.mouseTo.y = xy.y;
+            // drawing();
+            _this.drawingObject = null;
+            _this.moveCount = 1;
+            _this.doDrawing = false;
+            _this.drawType = 'none';
+          });
+          canvas.on("mouse:move", function (options) {
+            if (_this.moveCount % 2 && !_this.doDrawing) {
+              //减少绘制频率
+              return;
+            }
+            // console.log("canvas mouse:move");
+            _this.moveCount++;
+            var xy = transformMouse(options.e.offsetX, options.e.offsetY);
+            _this.mouseTo.x = xy.x;
+            _this.mouseTo.y = xy.y;
+            _this.drawing();
+          });
+
+          // 允许删除 object
+          fabric.Object.prototype.controls.deleteControl = new fabric.Control({
+            position: { x: 0.5, y: -0.5 },
+            offsetY: 0,
+            cursorStyle: 'pointer',
+            mouseUpHandler: deleteObject,
+            render: renderIcon,
+            cornerSize: 20
+          });
+        },
+        renderBackground(bgImgWidth, bgImgHeight) {
+          if (this.bgImgUrl) {
+            var canvas = this.__canvas;
+            // set background color
+            const _bgImgWidth = bgImgWidth || this.bgImgWidth;
+            const _bgImgHeight = bgImgHeight || this.bgImgHeight;
+            canvas.setBackgroundImage(this.bgImgUrl, canvas.renderAll.bind(canvas), {
+                width: _bgImgWidth,
+                height: _bgImgHeight,
+                repeat: 'no-repeat',
+                originX: 'left',
+                originY: 'top',
+                scaleX: canvas.width / _bgImgWidth,
+                scaleY: canvas.height / _bgImgHeight,
+            });
+          }
+        },
+        removeBg() {
+          var canvas = this.__canvas;
+          if(canvas.backgroundImage) {
+            this.bgImgUrl = '';
+            canvas.backgroundImage = 0;
+            canvas.renderAll();
+          }
+        },
+        discardCanvasActives() {
+          this.__canvas.discardActiveObject().renderAll(); // 取消 canvas 当前选中的对象
+        },
+        changeCanvasSize(w, h) {
+          var canvas = this.__canvas;
+          this.width = w;
+          this.height = h;
+          canvas.setWidth(this.width);
+          canvas.setHeight(this.height);
+        },
+        addMockRectToCanvas() {
+          if (this.__canvas) {
+            var rect = new fabric.Rect({
+              left: 0,
+              top: 0,
+              fill: '#000000',
+              opacity: 0.5,
+              width: 375,
+              height: 812,
+              hasControls: false,
+              selectable: false,
+              objectCaching: false,
+              transparentCorners: true,
+            });
+
+            this.__canvas.add(rect);
+            // this.__canvas.setActiveObject(rect);
+          }
+        },
+        bgImageChange() {
+          var _this = this;
+          var file = document.getElementById("upBgfile").files[0];
+          if (file) {
+            var reader  = new FileReader();
+            reader.addEventListener("load", function () {
+              var image = new Image();
+              image.src = reader.result;
+              image.onload = function() {
+                var bgImgW = this.width;
+                var bgImgH = this.height;
+                fabric.Image.fromURL(reader.result, function(oImg) {
+                  _this.bgImgUrl = oImg;
+                  _this.bgImgWidth = bgImgW;
+                  _this.bgImgWidth = bgImgH;
+                  _this.renderBackground(bgImgW, bgImgH);
+                });
+              };
+            }, false);
+            reader.readAsDataURL(file);
+          }
+        },
+        iconImageChange() {
+          var _this = this;
+          var file = document.getElementById("upfile").files[0];
+          if (file) {
+            var reader  = new FileReader();
+            reader.addEventListener("load", function () {
+              var image = new Image();
+              image.src = reader.result;
+              image.onload = function() {
+                // access image size here 
+                // console.log(this.width);
+                // console.log(this.height);
+                var scale = 100 / this.width;
+                fabric.Image.fromURL(reader.result, function(oImg) {
+                  oImg.scale(scale).set({
+                    left: 100,
+                    top: 100,
+                  });
+                  _this.__canvas.add(oImg);
+                  _this.__canvas.setActiveObject(oImg);
+                });
+              };
+            }, false);
+            reader.readAsDataURL(file);
+          }
+        },
+        drawing: function() {
+          var _this = this;
+          var canvas = this.__canvas;
+          var drawType = this.drawType;
+          var mouseFrom = this.mouseFrom;
+          var mouseTo = this.mouseTo;
+          var doDrawing = this.doDrawing;
+          var drawingObject = this.drawingObject;
+          var moveCount = this.moveCount;
+          var color = this.color;
+          var drawWidth = this.drawWidth;
+
+          if (drawingObject) {
+            canvas.remove(drawingObject);
+          }
+          switch (drawType) {
+            case "arrow": //箭头
+              this.canvasObject = new fabric.Path(drawArrow(mouseFrom.x, mouseFrom.y, mouseTo.x, mouseTo.y, 30, 30), {
+                stroke: color,
+                fill: "rgba(255,255,255,0)",
+                strokeWidth: drawWidth
+              });
+              break;
+            case "line": // 直线
+              this.canvasObject = new fabric.Line([mouseFrom.x, mouseFrom.y, mouseTo.x, mouseTo.y], {
+                stroke: color,
+                strokeWidth: drawWidth
+              });
+              break;
+            case "dottedline": //虚线
+              this.canvasObject = new fabric.Line([mouseFrom.x, mouseFrom.y, mouseTo.x, mouseTo.y], {
+                strokeDashArray: [3, 1],
+                stroke: color,
+                strokeWidth: drawWidth
+              });
+              break;
+            case "circle": //正圆
+              var left = mouseFrom.x,
+                top = mouseFrom.y;
+              var radius = Math.sqrt((mouseTo.x - left) * (mouseTo.x - left) + (mouseTo.y - top) * (mouseTo.y - top)) / 2;
+              // console.log(mouseFrom);
+              // console.log(mouseTo);
+              this.canvasObject = new fabric.Circle({
+                left: left,
+                top: top,
+                stroke: color,
+                fill: "rgba(255, 255, 255, 0)",
+                radius: radius,
+                strokeWidth: drawWidth
+              });
+              break;
+            case "ellipse": //椭圆
+              var left = mouseFrom.x,
+                top = mouseFrom.y;
+              var radius = Math.sqrt((mouseTo.x - left) * (mouseTo.x - left) + (mouseTo.y - top) * (mouseTo.y - top)) / 2;
+              this.canvasObject = new fabric.Ellipse({
+                left: left,
+                top: top,
+                stroke: color,
+                fill: "rgba(255, 255, 255, 0)",
+                originX: "center",
+                originY: "center",
+                rx: Math.abs(left - mouseTo.x),
+                ry: Math.abs(top - mouseTo.y),
+                strokeWidth: drawWidth
+              });
+              break;
+            case "rectangle": //长方形
+              var path =
+                "M " +
+                mouseFrom.x +
+                " " +
+                mouseFrom.y +
+                " L " +
+                mouseTo.x +
+                " " +
+                mouseFrom.y +
+                " L " +
+                mouseTo.x +
+                " " +
+                mouseTo.y +
+                " L " +
+                mouseFrom.x +
+                " " +
+                mouseTo.y +
+                " L " +
+                mouseFrom.x +
+                " " +
+                mouseFrom.y +
+                " z";
+              this.canvasObject = new fabric.Path(path, {
+                left: left,
+                top: top,
+                stroke: color,
+                strokeWidth: drawWidth,
+                fill: "rgba(255, 255, 255, 0)"
+              });
+              break;
+            case "rightangle": //直角三角形
+              var path = "M " + mouseFrom.x + " " + mouseFrom.y + " L " + mouseFrom.x + " " + mouseTo.y + " L " + mouseTo.x + " " + mouseTo.y + " z";
+              this.canvasObject = new fabric.Path(path, {
+                left: left,
+                top: top,
+                stroke: color,
+                strokeWidth: drawWidth,
+                fill: "rgba(255, 255, 255, 0)"
+              });
+              break;
+            case "equilateral": //等边三角形
+              var height = mouseTo.y - mouseFrom.y;
+              this.canvasObject = new fabric.Triangle({
+                top: mouseFrom.y,
+                left: mouseFrom.x,
+                width: Math.sqrt(Math.pow(height, 2) + Math.pow(height / 2.0, 2)),
+                height: height,
+                stroke: color,
+                strokeWidth: drawWidth,
+                fill: "rgba(255,255,255,0)"
+              });
+              break;
+            default:
+              break;
+          }
+          
+          // console.log(canvasObject);
+          if (this.canvasObject) {
+            // canvasObject.index = getCanvasObjectIndex();
+            canvas.add(this.canvasObject); //.setActiveObject(canvasObject)
+            this.drawingObject = this.canvasObject;
+          }
+        },
+        exportScreenshot: function() {
+          var _this = this;
+          var fileName = "image_output_" + _.random(99999999) + ".png";
+          var link = document.getElementById('link');
+          link.setAttribute('download', fileName);
+          link.setAttribute('href', this.__canvas.toDataURL({
+            format: "png",
+            // width: _this.width * 2,
+            // height: _this.height * 2,
+            // enableRetinaScaling: true,
+          }).replace("image/png", "image/octet-stream"));
+          link.click();
+        }
+        
+      }
+    }
+    var Ctor = Vue.extend(Main)
+    var app = new Ctor().$mount('#app')
+  </script>
+</body>
+
+</html>
