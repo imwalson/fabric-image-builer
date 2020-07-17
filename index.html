@@ -6,24 +6,23 @@
   <title>Image builder</title>
   <meta name="viewport" content="maximum-scale=1.0,minimum-scale=1.0,user-scalable=0,width=device-width,initial-scale=1">
   <link rel="stylesheet" href="./css/element-ui.css">
+  <link rel="stylesheet" href="./css/flex.css">
   <link rel="stylesheet" href="./css/main.css">
   <link rel="stylesheet" href="./css/vcolorpicker.css">
   <script src="//cdn.bootcdn.net/ajax/libs/lodash.js/4.17.19/lodash.min.js"></script>
   <script src="./js/vue.min.js"></script>
+  <script src="./js/client.js"></script>
   <script src="./js//element-ui.js"></script>
   <script src="./js/fabric-4.0.0-beta.7.js"></script>
   <script src="./js/vcolorpicker.umd.js"></script>
-  <style>
-    
-  </style>
 </head>
 
 <body>
-  <div id="app" class="fabric-canvas">
-    <div class="canvas-area" :style="{ width: width + 'px', height: height + 'px' }">
+  <div id="app" class="fabric-canvas flex-left">
+    <div class="canvas-area unit-0" :style="{ width: width + 'px', height: height + 'px' }">
       <canvas id="c" :width="width" :height="height"></canvas>
     </div>
-    <div class="form-content">
+    <div class="form-content unit">
       <el-form label-width="120px">
         <el-form-item label="画布尺寸">
           <el-select v-model="sizeValue" placeholder="请选择">
@@ -37,10 +36,6 @@
         </el-form-item>
 
         <el-form-item label="设置背景图">
-          <!-- <el-input v-model="bgImgUrl"></el-input>
-          <div class="upload-line">
-            <el-button>change bg</el-button>
-          </div> -->
           <div class="upload-line">
             <input class="visually-hidden" type="file" id="upBgfile" accept=".png,.jpeg,.jpg" name="upfile" @change="bgImageChange" >
             <label class="el-button el-button--default el-button--mini" for="upBgfile">Select image</label>
@@ -50,17 +45,10 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="添加素材图片">
-          <div class="upload-line">
-            <input class="visually-hidden" type="file" id="upfile" accept=".png,.jpeg,.jpg" name="upfile" @change="iconImageChange" >
-            <label class="el-button el-button--default el-button--mini" for="upfile">Select image</label>
-          </div>
-        </el-form-item>
-
         <el-form-item label="作图工具">
           <div class="upload-line">
             <el-radio-group v-model="drawType" size="small">
-              <el-radio label="none">无</el-radio>
+              <el-radio label="none">贴图/文字</el-radio>
               <el-radio label="pen">画笔</el-radio>
               <el-radio label="arrow" >箭头</el-radio>
               <el-radio label="line">直线</el-radio>
@@ -80,6 +68,34 @@
           </div>
         </el-form-item>
 
+        <div v-show="drawType === 'none'">
+          <el-form-item label="添加素材图片">
+            <div class="upload-line">
+              <input class="visually-hidden" type="file" id="upfile" accept=".png,.jpeg,.jpg" name="upfile" @change="iconImageChange" >
+              <label class="el-button el-button--default el-button--mini" for="upfile">Select image</label>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="选择字体">
+            <div class="upload-line">
+              <el-select v-model="font" placeholder="请选择">
+                <el-option
+                  v-for="item in fontList"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value">
+                </el-option>
+              </el-select>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="添加文字">
+            <div class="upload-line">
+              <el-button type="default" size="mini" @click="showTextModel">输入文本</el-button>
+            </div>
+          </el-form-item>
+        </div>
+
         <el-form-item>
           <el-button type="primary" @click="exportScreenshot">导出图片</el-button>
           <a id="link"></a>
@@ -89,7 +105,6 @@
   </div>
   <script>
     //坐标转换
-    window.zoom = window.zoom ? window.zoom : 1;
     function transformMouse(mouseX, mouseY) {
       return { x: mouseX / window.zoom, y: mouseY / window.zoom };
     }
@@ -123,8 +138,9 @@
       data: function () {
         return {
           __canvas: null,
-          width: 360,
-          height: 640,
+          zoom: 1,
+          width: 720,
+          height: 1280,
           bgImgWidth: 768,
           bgImgHeight: 1024,
           bgImgUrl: '/images/creative-demo-768x1024.jpg',
@@ -140,28 +156,30 @@
           drawType: 'none',
           doDrawing: false,
           drawWidth: 2,
+          font: 'Times New Roman',
+          fontList: [],
           color: '#E34F51',
           drawingObject: null,
           moveCount: 1,
-          sizeValue: '360_640',
+          sizeValue: '720_1280',
           sizeOptions: [{
-            value: '360_640',
-            label: '360x640'
+            value: '720_1280',
+            label: '720x1280'
           }, {
-            value: '600_600',
-            label: '600x600'
+            value: '1000_1000',
+            label: '1000x1000'
           }, {
-            value: '600_300',
-            label: '600x300'
+            value: '768_1024',
+            label: '768x1024'
           }, {
-            value: '300_600',
-            label: '300x600'
+            value: '1280_720',
+            label: '1280x720'
           }, {
-            value: '600_400',
-            label: '600x400'
+            value: '1200_900',
+            label: '1200x900'
           }, {
-            value: '400_600',
-            label: '400x600'
+            value: '1200_800',
+            label: '1200x800'
           }]
         };
       },
@@ -175,25 +193,51 @@
             // this.renderBackground();
           }
         },
-        drawType: function(val) {
+        drawType: function(val, oldVal) {
+          var _this = this;
           if (val === 'none') {
-            this.discardCanvasActives();
-            this.__canvas.isDrawingMode = false;
+            // this.discardCanvasActives();
+            this.$nextTick(function() {
+              _this.__canvas.isDrawingMode = false;
+            })
           } else if (val === 'pen') {
-            this.__canvas.isDrawingMode = true;
-            this.__canvas.freeDrawingBrush.color = this.color; //设置自由绘颜色
+            this.$nextTick(function() {
+              _this.__canvas.isDrawingMode = true;
+              _this.__canvas.freeDrawingBrush.color = this.color; //设置自由绘颜色
+              _this.__canvas.freeDrawingBrush.width = this.drawWidth;
+            })
           } else {
-            this.__canvas.isDrawingMode = false;
+            this.$nextTick(function() {
+              _this.__canvas.isDrawingMode = false;
+            })
           }
         },
       },
       mounted: function () {
         this.initCanvas();
+        this.getFonts();
+        this.zoomWindows();
       },
       methods: {
+        zoomWindows() {
+          window.zoom = this.zoom ? this.zoom : 1;
+        },
+        getFonts() {
+          var client = new ClientJS();
+          var fonts = client.getFonts();
+          var fontArr = fonts.split(',');
+          this.fontList = fontArr.map(function (item){
+            var obj = {
+              value: item,
+              label: item
+            };
+            return obj;
+          });
+        },
         initCanvas() {
           var _this = this;
-          var canvas = this.__canvas = new fabric.Canvas("c");
+          this.__canvas = new fabric.Canvas("c");
+          var canvas = this.__canvas;
           this.renderBackground();
           // set background color
           // this.addMockRectToCanvas();
@@ -204,9 +248,15 @@
           img.src = deleteIcon;
 
           function deleteObject(eventData, target) {
-            var canvas = target.canvas;
+            console.log('deleteObject');
+            console.log(eventData, target.canvas);
+            // var canvas = target.canvas;
             canvas.remove(target);
+            // canvas.renderAll();
+            _this.discardCanvasActives();
             canvas.requestRenderAll();
+            eventData.stopPropagation();
+            eventData.preventDefault();
           }
 
           function renderIcon(ctx, left, top, styleOverride, fabricObject) {
@@ -221,16 +271,13 @@
             ctx.restore();
           }
 
-          canvas.freeDrawingBrush.color = this.color; //设置自由绘颜色
-          canvas.freeDrawingBrush.width = this.drawWidth;
-
           //绑定画板事件
           canvas.on("mouse:down", function (options) {
+            // console.log("canvas mouse:down");
             var activeObject = canvas.getActiveObject();
             if (activeObject) {
               console.log('has activeObject');
             } else {
-              // console.log("canvas mouse:down");
               var xy = transformMouse(options.e.offsetX, options.e.offsetY);
               _this.mouseFrom.x = xy.x;
               _this.mouseFrom.y = xy.y;
@@ -242,15 +289,23 @@
             var xy = transformMouse(options.e.offsetX, options.e.offsetY);
             _this.mouseTo.x = xy.x;
             _this.mouseTo.y = xy.y;
-            // drawing();
             _this.drawingObject = null;
             _this.moveCount = 1;
             _this.doDrawing = false;
-            _this.drawType = 'none';
+            // if (_this.drawType !== 'pen') {
+            //   _this.drawType = 'none';
+            // }
           });
           canvas.on("mouse:move", function (options) {
             if (_this.moveCount % 2 && !_this.doDrawing) {
               //减少绘制频率
+              return;
+            }
+            var activeObject = canvas.getActiveObject();
+            if (activeObject) {
+              return;
+            } 
+            if (_this.drawType === 'none' || _this.drawType === 'pen') {
               return;
             }
             // console.log("canvas mouse:move");
@@ -278,17 +333,18 @@
             const _bgImgWidth = bgImgWidth || this.bgImgWidth;
             const _bgImgHeight = bgImgHeight || this.bgImgHeight;
             canvas.setBackgroundImage(this.bgImgUrl, canvas.renderAll.bind(canvas), {
-                width: _bgImgWidth,
-                height: _bgImgHeight,
-                repeat: 'no-repeat',
-                originX: 'left',
-                originY: 'top',
-                scaleX: canvas.width / _bgImgWidth,
-                scaleY: canvas.height / _bgImgHeight,
+              width: _bgImgWidth,
+              height: _bgImgHeight,
+              repeat: 'no-repeat',
+              originX: 'left',
+              originY: 'top',
+              scaleX: canvas.width / _bgImgWidth,
+              scaleY: canvas.height / _bgImgHeight,
             });
           }
         },
         removeBg() {
+          this.discardCanvasActives();
           var canvas = this.__canvas;
           if(canvas.backgroundImage) {
             this.bgImgUrl = '';
@@ -306,24 +362,28 @@
           canvas.setWidth(this.width);
           canvas.setHeight(this.height);
         },
-        addMockRectToCanvas() {
-          if (this.__canvas) {
-            var rect = new fabric.Rect({
-              left: 0,
-              top: 0,
-              fill: '#000000',
-              opacity: 0.5,
-              width: 375,
-              height: 812,
-              hasControls: false,
-              selectable: false,
-              objectCaching: false,
-              transparentCorners: true,
-            });
+        showTextModel() {
+          var _this = this;
+          this.$prompt('请输入文字', '提示', {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+          }).then(({ value }) => {
+            if (value) {
+              var textConf = {
+                left: 100,
+                top: 150,
+                fill: _this.color,
+                fontFamily: _this.font,
+                fontSize: 24,
+              };
+              var itext = new fabric.Text(value, textConf);
 
-            this.__canvas.add(rect);
-            // this.__canvas.setActiveObject(rect);
-          }
+              _this.__canvas.add(itext);
+              _this.__canvas.setActiveObject(itext);
+            }
+          }).catch(() => {
+            console.log('no text');     
+          });
         },
         bgImageChange() {
           var _this = this;

@@ -3,7 +3,7 @@
 	text-align: left;
 	font-size: 14px;
 	display: inline-block;
-  z-index: 9999;
+  z-index: 99;
 }
 
 .m-colorPicker ul, .m-colorPicker li, .m-colorPicker ol {
