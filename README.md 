@@ -1,0 +1,5 @@
+# fabric-image-builer
+
+纯前端的 Canvas 作图工具，基于 fabric.js + vue.js 
+
+[查看DEMO](https://imwalson.github.io/fabric-image-builer/)
